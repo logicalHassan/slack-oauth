@@ -1,17 +1,16 @@
 const express = require("express");
 const axios = require("axios");
 const app = express();
-const port = 3000;
 
-const clientId = "8351298564167.8363031493781";
-const clientSecret = "4744f74225bbdfc3832a1ae94b3aa871";
-const redirectUri = "https://40sczldl-3000.inc1.devtunnels.ms/auth/slack/callback";
+const clientId = process.env.CLIENT_ID;
+const clientSecret = process.env.CLIENT_SECRET;
+const redirectUri = process.env.APP_REDIRECT_URL;
 
 app.get("/", async (req, res) => {
   res.send("Hello Server");
 });
 
-// Redirect users to Slack's OAuth page
+//* STEP: 1 --> Redirect users to Slack's OAuth page
 app.get("/auth/slack", (req, res) => {
   const scopes = "channels:history,groups:history,im:history";
   const userScope = "&users:read";
@@ -19,7 +18,7 @@ app.get("/auth/slack", (req, res) => {
   res.redirect(slackAuthUrl);
 });
 
-// Handle OAuth callback
+//* STEP: 2 --> Handle OAuth callback
 app.get("/auth/slack/callback", async (req, res) => {
   const code = req.query.code;
 
@@ -64,37 +63,36 @@ app.get("/auth/slack/callback", async (req, res) => {
   }
 });
 
-// Start the server
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+// Handle disconnect
+app.post("/auth/slack/disconnect", async (req, res) => {
+  const { teamId } = req.body;
+
+  try {
+    // Fetch the tokens from your database (** use your db adapter for querying **)
+    const tokens = await db.collection("tokens").findOne({ teamId });
+
+    if (!tokens) {
+      return res.status(404).json({ success: false, error: "No tokens found for this team" });
+    }
+
+    // Revoke the tokens using Slack's API
+    await axios.post("https://slack.com/api/auth.revoke", null, {
+      params: {
+        token: tokens.accessToken,
+      },
+    });
+
+    // Remove the tokens from your database
+    await db.collection("tokens").deleteOne({ teamId });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error during disconnect:", error);
+    res.status(500).json({ success: false, error: "Failed to disconnect" });
+  }
 });
 
-//* ---> For disconnecting the app, delete the stored token and revoke it
-
-// app.post('/auth/slack/disconnect', async (req, res) => {
-//     const { teamId } = req.body; // Assuming you pass the teamId from the frontend
-
-//     try {
-//       // Fetch the tokens from your database
-//       const tokens = await db.collection('tokens').findOne({ teamId });
-
-//       if (!tokens) {
-//         return res.status(404).json({ success: false, error: 'No tokens found for this team' });
-//       }
-
-//       // Revoke the tokens using Slack's API
-//       await axios.post('https://slack.com/api/auth.revoke', null, {
-//         params: {
-//           token: tokens.accessToken, // Use the user token or bot token
-//         },
-//       });
-
-//       // Remove the tokens from your database
-//       await db.collection('tokens').deleteOne({ teamId });
-
-//       res.json({ success: true });
-//     } catch (error) {
-//       console.error('Error during disconnect:', error);
-//       res.status(500).json({ success: false, error: 'Failed to disconnect' });
-//     }
-//   });
+// Start the server
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});
